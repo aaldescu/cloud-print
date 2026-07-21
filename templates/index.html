@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CloudPrint · Imprimare locală</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-icon">🖨️</span>
+    <div>
+      <h1>CloudPrint</h1>
+      <p class="brand-sub">Imprimare pe rețeaua locală</p>
+    </div>
+  </div>
+  <div class="printer-chip" id="printerChip" title="Starea imprimantei">
+    <span class="status-dot" id="printerDot"></span>
+    <span id="printerChipName">Se caută imprimante…</span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ============ Previzualizare ============ -->
+  <section class="preview-card" id="previewCard">
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button"
+         aria-label="Încarcă un fișier pentru printare">
+      <div class="dropzone-inner">
+        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4m0 0-4 4m4-4 4 4"/>
+          <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+        <p class="dropzone-title">Trage un fișier aici</p>
+        <p class="dropzone-hint">sau <span class="link">alege de pe dispozitiv</span></p>
+        <p class="dropzone-formats">PDF · JPG · PNG · GIF · TXT &nbsp;·&nbsp; max. 50 MB</p>
+      </div>
+      <div class="dropzone-progress" id="uploadProgress" hidden>
+        <div class="spinner"></div>
+        <p>Se încarcă…</p>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.gif,.txt" hidden>
+
+    <div class="preview" id="preview" hidden>
+      <div class="preview-toolbar">
+        <div class="file-info">
+          <span class="file-badge" id="fileBadge">PDF</span>
+          <div class="file-text">
+            <span class="file-name" id="fileName"></span>
+            <span class="file-meta" id="fileMeta"></span>
+          </div>
+        </div>
+        <div class="toolbar-actions">
+          <div class="zoom-group" id="zoomGroup">
+            <button class="icon-btn" id="zoomOut" title="Micșorează" aria-label="Micșorează">−</button>
+            <span class="zoom-level" id="zoomLevel">100%</span>
+            <button class="icon-btn" id="zoomIn" title="Mărește" aria-label="Mărește">+</button>
+          </div>
+          <button class="icon-btn danger" id="removeFile" title="Alege alt fișier" aria-label="Alege alt fișier">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="pages-scroll" id="pagesScroll">
+        <div class="pages" id="pages"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Opțiuni de printare ============ -->
+  <aside class="options-card">
+    <h2 class="panel-title">Opțiuni de printare</h2>
+
+    <div class="presets" role="group" aria-label="Presetări rapide">
+      <button class="preset" data-preset="document">
+        <span class="preset-icon">📄</span>
+        <span class="preset-name">Document</span>
+        <span class="preset-desc">A4 · alb-negru · față-verso</span>
+      </button>
+      <button class="preset" data-preset="photo">
+        <span class="preset-icon">🖼️</span>
+        <span class="preset-name">Foto</span>
+        <span class="preset-desc">color · o față · încadrare</span>
+      </button>
+      <button class="preset" data-preset="draft">
+        <span class="preset-icon">✏️</span>
+        <span class="preset-name">Ciornă</span>
+        <span class="preset-desc">alb-negru · calitate redusă</span>
+      </button>
+    </div>
+
+    <div class="field">
+      <label for="printerSelect">Imprimantă</label>
+      <select id="printerSelect"></select>
+    </div>
+
+    <div class="field">
+      <span class="field-label" id="labelCopies">Copii</span>
+      <div class="stepper" role="group" aria-labelledby="labelCopies">
+        <button id="copiesMinus" aria-label="Mai puține copii">−</button>
+        <input id="copies" type="number" min="1" max="99" value="1" inputmode="numeric">
+        <button id="copiesPlus" aria-label="Mai multe copii">+</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Culoare</span>
+      <div class="segmented" id="colorSeg">
+        <button data-value="gray" class="active">◐ Alb-negru</button>
+        <button data-value="color">🎨 Color</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Față-verso</span>
+      <div class="segmented" id="duplexSeg">
+        <button data-value="simplex">O față</button>
+        <button data-value="duplex" class="active">Față-verso</button>
+      </div>
+    </div>
+
+    <details class="advanced" id="advanced">
+      <summary>Opțiuni avansate</summary>
+      <div class="advanced-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="mediaSelect">Hârtie</label>
+            <select id="mediaSelect">
+              <option value="A4" selected>A4</option>
+              <option value="A5">A5</option>
+              <option value="Letter">Letter</option>
+              <option value="Legal">Legal</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="qualitySelect">Calitate</label>
+            <select id="qualitySelect">
+              <option value="normal" selected>Normală</option>
+              <option value="draft">Ciornă</option>
+              <option value="high">Înaltă</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Orientare</span>
+          <div class="segmented" id="orientSeg">
+            <button data-value="portrait" class="active">Portret</button>
+            <button data-value="landscape">Peisaj</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="pageRange">Pagini <span class="muted">(gol = toate)</span></label>
+          <input id="pageRange" type="text" placeholder="ex.: 1-3,5,8" autocomplete="off">
+          <p class="field-error" id="pageRangeError" hidden>Interval invalid — folosește formatul 1-3,5</p>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" id="fitToPage">
+          <span>Încadrează în pagină</span>
+        </label>
+        <div class="field" id="duplexEdgeField">
+          <span class="field-label">Legare față-verso</span>
+          <div class="segmented" id="edgeSeg">
+            <button data-value="long" class="active">Margine lungă</button>
+            <button data-value="short">Margine scurtă</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <button class="print-btn" id="printBtn" disabled>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 9V3h12v6"/>
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+        <rect x="6" y="14" width="12" height="7"/>
+      </svg>
+      <span id="printBtnLabel">Printează</span>
+    </button>
+
+    <section class="jobs" id="jobsSection" hidden>
+      <h3>Coadă de printare</h3>
+      <ul id="jobsList"></ul>
+    </section>
+  </aside>
+</main>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='vendor/pdf.min.js') }}"></script>
+<script>
+  window.PDF_WORKER_SRC = "{{ url_for('static', filename='vendor/pdf.worker.min.js') }}";
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

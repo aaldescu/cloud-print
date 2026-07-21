@@ -1,0 +1,16 @@
+[Unit]
+Description=CloudPrint - server local de printare
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/cloud-print
+Environment=PORT=8080
+ExecStart=/usr/bin/python3 /home/pi/cloud-print/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
