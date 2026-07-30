@@ -46,10 +46,6 @@
     jobsList: $("jobsList"),
     toasts: $("toasts"),
     tabs: $("tabs"),
-    filesBadge: $("filesBadge"),
-    fileGrid: $("fileGrid"),
-    filesCount: $("filesCount"),
-    filesEmpty: $("filesEmpty"),
     historyList: $("historyList"),
     historyEmpty: $("historyEmpty"),
     clearHistory: $("clearHistory"),
@@ -57,7 +53,6 @@
 
   var views = {
     print: $("view-print"),
-    files: $("view-files"),
     history: $("view-history"),
   };
 
@@ -242,7 +237,6 @@
       .then(function (data) {
         state.file = data;
         showPreview();
-        loadFiles();  // apare imediat în „Fișiere”
       })
       .catch(function (err) {
         toast(err.message, "error");
@@ -530,7 +524,7 @@
         toast("Trimis la imprimantă ✓", "success");
         rememberJobTitle(data.job_id, data.title);
         pollJobsSoon();
-        loadFiles();  // reîmprospătează contorul de printări
+        loadHistory();
       })
       .catch(function (err) {
         toast(err.message, "error");
@@ -617,7 +611,6 @@
     els.tabs.querySelectorAll(".tab").forEach(function (t) {
       t.classList.toggle("active", t.dataset.view === name);
     });
-    if (name === "files") loadFiles();
     if (name === "history") loadHistory();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -631,101 +624,6 @@
     var goto = e.target.closest("[data-goto]");
     if (goto) switchView(goto.dataset.goto);
   });
-
-  /* ---------- bibliotecă de fișiere ---------- */
-
-  function loadFiles() {
-    fetch("/api/files")
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var files = data.files || [];
-        els.filesBadge.hidden = files.length === 0;
-        els.filesBadge.textContent = files.length;
-        renderFiles(files);
-      })
-      .catch(function () {});
-  }
-
-  function renderFiles(files) {
-    els.fileGrid.innerHTML = "";
-    els.filesEmpty.hidden = files.length > 0;
-    els.filesCount.textContent = files.length
-      ? files.length + (files.length === 1 ? " fișier" : " fișiere")
-      : "";
-
-    files.forEach(function (f) {
-      var li = document.createElement("li");
-      li.className = "file-card";
-
-      var top = document.createElement("div");
-      top.className = "file-card-top";
-
-      var thumb = document.createElement("div");
-      thumb.className = "file-thumb";
-      thumb.textContent = typeIcon(f.type);
-      top.appendChild(thumb);
-
-      var info = document.createElement("div");
-      info.className = "file-card-info";
-      var name = document.createElement("div");
-      name.className = "file-card-name";
-      name.textContent = f.name;
-      info.appendChild(name);
-      var meta = document.createElement("div");
-      meta.className = "file-card-meta";
-      meta.textContent = formatSize(f.size) + " · " + formatDate(f.created_at);
-      info.appendChild(meta);
-      if (f.print_count > 0) {
-        var pc = document.createElement("div");
-        pc.className = "print-count";
-        pc.textContent = "✓ printat de " + f.print_count +
-          (f.print_count === 1 ? " dată" : " ori");
-        info.appendChild(pc);
-      }
-      top.appendChild(info);
-      li.appendChild(top);
-
-      var actions = document.createElement("div");
-      actions.className = "file-card-actions";
-
-      var open = document.createElement("button");
-      open.className = "open-btn";
-      open.innerHTML = "🖨️ Deschide";
-      open.addEventListener("click", function () { openFromLibrary(f); });
-      actions.appendChild(open);
-
-      var del = document.createElement("button");
-      del.className = "del-btn";
-      del.title = "Șterge fișierul";
-      del.setAttribute("aria-label", "Șterge fișierul");
-      del.innerHTML = "🗑";
-      del.addEventListener("click", function () { deleteFile(f, li); });
-      actions.appendChild(del);
-
-      li.appendChild(actions);
-      els.fileGrid.appendChild(li);
-    });
-  }
-
-  function openFromLibrary(f) {
-    state.file = { id: f.id, name: f.name, type: f.type, url: f.url, size: f.size };
-    switchView("print");
-    showPreview();
-    toast("„" + f.name + "” — alege opțiunile și printează.", "success");
-  }
-
-  function deleteFile(f, li) {
-    if (!confirm("Ștergi „" + f.name + "”?")) return;
-    fetch("/api/files/" + encodeURIComponent(f.id), { method: "DELETE" })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.error) throw new Error(data.error);
-        li.remove();
-        loadFiles();
-        if (state.file && state.file.id === f.id) resetToDropzone();
-      })
-      .catch(function (err) { toast(err.message, "error"); });
-  }
 
   /* ---------- istoric ---------- */
 
@@ -763,6 +661,12 @@
       when.className = "history-chip";
       when.textContent = "🕑 " + formatDate(h.created_at);
       meta.appendChild(when);
+      if (h.printer) {
+        var pr = document.createElement("span");
+        pr.className = "history-chip";
+        pr.textContent = "🖨️ " + h.printer.replace(/_/g, " ");
+        meta.appendChild(pr);
+      }
       optionsSummary(h.options).forEach(function (bit) {
         var chip = document.createElement("span");
         chip.className = "history-chip";
@@ -772,39 +676,8 @@
       body.appendChild(meta);
       li.appendChild(body);
 
-      var btn = document.createElement("button");
-      btn.className = "reprint-btn";
-      btn.innerHTML = "🖨️ Reprintează";
-      btn.disabled = !h.can_reprint;
-      if (!h.can_reprint) btn.title = "Fișierul nu mai există";
-      btn.addEventListener("click", function () { reprint(h, btn); });
-      li.appendChild(btn);
-
       els.historyList.appendChild(li);
     });
-  }
-
-  function reprint(h, btn) {
-    btn.disabled = true;
-    var payload = Object.assign({}, h.options, { file_id: h.file_id });
-    fetch("/api/print", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (r) {
-        return r.json().then(function (data) {
-          if (!r.ok) throw new Error(data.error || "Printarea a eșuat.");
-          return data;
-        });
-      })
-      .then(function (data) {
-        toast("Retrimis la imprimantă ✓", "success");
-        rememberJobTitle(data.job_id, data.title);
-        pollJobsSoon();
-      })
-      .catch(function (err) { toast(err.message, "error"); })
-      .finally(function () { btn.disabled = !h.can_reprint; });
   }
 
   els.clearHistory.addEventListener("click", function () {
@@ -819,6 +692,5 @@
 
   loadPrinters();
   refreshJobs();
-  loadFiles();
   updatePrintButton();
 })();

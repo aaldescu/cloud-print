@@ -4,8 +4,11 @@ Aplicație Flask minimală, gândită pentru hardware modest (Pi Zero W):
 - fără dependențe grele, doar Flask + utilitarele CUPS din linia de comandă
 - randarea PDF pentru previzualizare se face în browser (PDF.js),
   serverul doar servește fișierele
-- fișierele încărcate și istoricul printărilor sunt păstrate într-o
-  bază SQLite (din biblioteca standard), ca să poți reprinta oricând
+- fișierele încărcate sunt temporare (se șterg automat); doar istoricul
+  printărilor (nume, dată, opțiuni) e păstrat într-o bază SQLite, ca să
+  știi ce s-a printat și când
+- poate rula pe HTTPS (certificat self-signed) — necesar pentru unele
+  telefoane care refuză http către IP-uri locale
 """
 
 import json
@@ -34,6 +37,7 @@ DB_PATH = BASE_DIR / "cloudprint.db"
 
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".txt"}
 MAX_UPLOAD_MB = 50
+UPLOAD_TTL_SECONDS = 6 * 60 * 60  # fișierele temporare se șterg după 6h
 
 PAGE_RANGE_RE = re.compile(r"^\d+(-\d+)?(,\d+(-\d+)?)*$")
 FILE_ID_RE = re.compile(r"^[0-9a-f]{32}\.[a-z]+$")
@@ -41,6 +45,10 @@ JOB_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+-\d+$")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+# nume/tip original per fișier temporar (doar în memorie — fișierele oricum
+# sunt efemere, deci nu are rost să persistăm și conținutul lor)
+_uploads = {}
 
 
 # ------------------------------------------------------------------ bază de date
@@ -64,18 +72,8 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(
         """
-        CREATE TABLE IF NOT EXISTS files (
-            id              TEXT PRIMARY KEY,
-            name            TEXT NOT NULL,
-            type            TEXT NOT NULL,
-            size            INTEGER NOT NULL,
-            created_at      REAL NOT NULL,
-            last_printed_at REAL,
-            print_count     INTEGER NOT NULL DEFAULT 0
-        );
         CREATE TABLE IF NOT EXISTS history (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_id    TEXT,
             name       TEXT NOT NULL,
             type       TEXT NOT NULL,
             printer    TEXT,
@@ -110,8 +108,16 @@ def run_command(args, timeout=15):
     return result.returncode == 0, result.stdout, result.stderr
 
 
-def file_row(file_id):
-    return get_db().execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
+def cleanup_old_uploads():
+    """Șterge fișierele temporare mai vechi decât TTL."""
+    now = time.time()
+    for path in UPLOAD_DIR.iterdir():
+        try:
+            if now - path.stat().st_mtime > UPLOAD_TTL_SECONDS:
+                path.unlink()
+                _uploads.pop(path.name, None)
+        except OSError:
+            pass
 
 
 # ------------------------------------------------------------------ pagini
@@ -155,10 +161,12 @@ def list_printers():
     return jsonify({"printers": printers, "default": default, "error": None})
 
 
-# ------------------------------------------------------------------ fișiere
+# ------------------------------------------------------------------ fișiere temporare
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
+    cleanup_old_uploads()
+
     file = request.files.get("file")
     if file is None or not file.filename:
         return jsonify({"error": "Niciun fișier trimis."}), 400
@@ -178,13 +186,7 @@ def upload():
     dest = UPLOAD_DIR / file_id
     file.save(dest)
     size = dest.stat().st_size
-
-    db = get_db()
-    db.execute(
-        "INSERT INTO files (id, name, type, size, created_at) VALUES (?, ?, ?, ?, ?)",
-        (file_id, file.filename, ext.lstrip("."), size, time.time()),
-    )
-    db.commit()
+    _uploads[file_id] = {"name": file.filename, "type": ext.lstrip(".")}
 
     return jsonify(
         {
@@ -195,41 +197,6 @@ def upload():
             "url": f"/files/{file_id}",
         }
     )
-
-
-@app.route("/api/files")
-def list_files():
-    rows = get_db().execute(
-        "SELECT * FROM files ORDER BY created_at DESC"
-    ).fetchall()
-    files = [
-        {
-            "id": r["id"],
-            "name": r["name"],
-            "type": r["type"],
-            "size": r["size"],
-            "url": f"/files/{r['id']}",
-            "created_at": r["created_at"],
-            "last_printed_at": r["last_printed_at"],
-            "print_count": r["print_count"],
-        }
-        for r in rows
-    ]
-    return jsonify({"files": files})
-
-
-@app.route("/api/files/<file_id>", methods=["DELETE"])
-def delete_file(file_id):
-    if not FILE_ID_RE.match(file_id):
-        return jsonify({"error": "Id invalid."}), 400
-    db = get_db()
-    db.execute("DELETE FROM files WHERE id = ?", (file_id,))
-    db.commit()
-    try:
-        (UPLOAD_DIR / file_id).unlink()
-    except OSError:
-        pass
-    return jsonify({"ok": True})
 
 
 @app.route("/files/<file_id>")
@@ -249,7 +216,7 @@ def print_file():
     if not FILE_ID_RE.match(file_id) or not (UPLOAD_DIR / file_id).exists():
         return jsonify({"error": "Fișierul nu a fost găsit. Încarcă-l din nou."}), 400
 
-    row = file_row(file_id)
+    info = _uploads.get(file_id, {})
 
     args = ["lp"]
 
@@ -266,7 +233,7 @@ def print_file():
     copies = max(1, min(copies, 99))
     args += ["-n", str(copies)]
 
-    title = row["name"] if row else file_id
+    title = info.get("name", file_id)
     args += ["-t", title[:120]]
 
     grayscale = bool(data.get("grayscale"))
@@ -315,9 +282,7 @@ def print_file():
     if match:
         job_id = match.group(1)
 
-    # opțiunile efectiv folosite — pentru reprintare identică din istoric
     options = {
-        "printer": printer,
         "copies": copies,
         "grayscale": grayscale,
         "duplex": duplex,
@@ -330,25 +295,10 @@ def print_file():
     }
 
     db = get_db()
-    now = time.time()
-    if row:
-        db.execute(
-            "UPDATE files SET last_printed_at = ?, print_count = print_count + 1 "
-            "WHERE id = ?",
-            (now, file_id),
-        )
     db.execute(
-        "INSERT INTO history (file_id, name, type, printer, job_id, options, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            file_id,
-            title,
-            row["type"] if row else "",
-            printer,
-            job_id,
-            json.dumps(options),
-            now,
-        ),
+        "INSERT INTO history (name, type, printer, job_id, options, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (title, info.get("type", ""), printer, job_id, json.dumps(options), time.time()),
     )
     db.commit()
 
@@ -360,23 +310,19 @@ def print_file():
 @app.route("/api/history")
 def list_history():
     rows = get_db().execute(
-        "SELECT * FROM history ORDER BY created_at DESC LIMIT 100"
+        "SELECT * FROM history ORDER BY created_at DESC LIMIT 200"
     ).fetchall()
-    items = []
-    for r in rows:
-        file_exists = bool(r["file_id"]) and (UPLOAD_DIR / r["file_id"]).exists()
-        items.append(
-            {
-                "id": r["id"],
-                "file_id": r["file_id"],
-                "name": r["name"],
-                "type": r["type"],
-                "printer": r["printer"],
-                "options": json.loads(r["options"]),
-                "created_at": r["created_at"],
-                "can_reprint": file_exists,
-            }
-        )
+    items = [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "type": r["type"],
+            "printer": r["printer"],
+            "options": json.loads(r["options"]),
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
     return jsonify({"history": items})
 
 
@@ -396,7 +342,6 @@ def list_jobs():
     if not ok and err:
         return jsonify({"jobs": [], "error": err.strip()})
 
-    # titluri din istoric, ca să afișăm numele fișierului în coadă
     titles = {
         r["job_id"]: r["name"]
         for r in get_db().execute(
@@ -441,4 +386,13 @@ def too_large(_):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    app.run(host="0.0.0.0", port=port, threaded=True)
+
+    # HTTPS dacă există certificat (necesar pe unele telefoane care refuză
+    # http către IP-uri locale). Certificatul se generează cu ./gen-cert.sh
+    cert = BASE_DIR / "certs" / "cert.pem"
+    key = BASE_DIR / "certs" / "key.pem"
+    ssl_context = (str(cert), str(key)) if cert.exists() and key.exists() else None
+
+    scheme = "https" if ssl_context else "http"
+    print(f"CloudPrint pornește pe {scheme}://0.0.0.0:{port}")
+    app.run(host="0.0.0.0", port=port, threaded=True, ssl_context=ssl_context)

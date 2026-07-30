@@ -2,5 +2,6 @@ __pycache__/
 *.pyc
 uploads/
 cloudprint.db
+certs/
 .venv/
 venv/

@@ -17,10 +17,11 @@ printa de pe telefon sau laptop — fără drivere, fără cabluri.
 - **Opțiuni complete** — copii, față-verso (margine lungă/scurtă), alb-negru/color,
   format hârtie, orientare, interval de pagini, calitate, încadrare în pagină
 - **Coadă de printare** — vezi joburile active și anulează-le cu un click
-- **Fișiere salvate** — fiecare document încărcat rămâne salvat; îl deschizi și
-  reprintezi oricând, cu ce opțiuni vrei (vezi și de câte ori a fost printat)
-- **Istoric printări** — lista ultimelor printări, cu opțiunile folosite;
-  reprintezi identic cu un singur click
+- **Istoric printări** — ce s-a printat, când și cu ce opțiuni (nume, dată,
+  imprimantă, copii, alb-negru/color etc.). Fișierele nu se salvează — doar
+  jurnalul, ca să știi ce a trecut prin imprimantă
+- **Acces de pe telefon (HTTPS)** — pornește pe HTTPS cu certificat self-signed,
+  fiindcă unele telefoane refuză `http` către IP-uri locale
 - **Ușor pentru Pi Zero W** — doar Flask + comenzile CUPS + o mică bază SQLite
   (din biblioteca standard Python); toată randarea grea (previzualizarea PDF)
   se face în browserul clientului, nu pe Pi
@@ -81,18 +82,34 @@ telefon / laptop ──(WiFi)──▶ Flask (Pi)──▶ lp / lpstat (CUPS) �
             previzualizarea
 ```
 
-- `POST /api/upload` — salvează fișierul și îl înregistrează în biblioteca SQLite
+- `POST /api/upload` — salvează fișierul temporar (se șterge automat după 6h)
 - `GET /files/<id>` — servește fișierul pentru previzualizare
-- `GET /api/files`, `DELETE /api/files/<id>` — biblioteca de fișiere salvate
 - `POST /api/print` — construiește comanda `lp` cu opțiunile alese
   (`sides=two-sided-long-edge`, `print-color-mode=monochrome`, `page-ranges` etc.)
   și înregistrează printarea în istoric
 - `GET /api/history`, `DELETE /api/history` — istoricul printărilor
 - `GET /api/printers`, `GET /api/jobs`, `POST /api/jobs/<id>/cancel` — stare și coadă
 
-Fișierele salvate și istoricul se păstrează într-o bază SQLite (`cloudprint.db`)
-și supraviețuiesc restartului. Fișierele nu se mai șterg automat — le ștergi
-manual din tab-ul **Fișiere**, ca să poți reprinta oricând documente mai vechi.
+Fișierele încărcate sunt **temporare** (șterse automat după câteva ore) — nu se
+salvează pe Pi. Se păstrează doar **istoricul** (nume, dată, opțiuni) într-o bază
+SQLite (`cloudprint.db`), ca să știi ce s-a printat și când.
+
+### Acces de pe telefon (HTTPS)
+
+Unele telefoane (Chrome pe Android cu „Always use secure connections") refuză
+`http` către un IP local. De aceea aplicația poate rula pe HTTPS: `install.sh`
+generează automat un certificat self-signed în `certs/`. Dacă app-ul găsește
+`certs/cert.pem` + `certs/key.pem`, pornește pe **`https://<ip>:8080`**.
+
+La prima accesare browserul avertizează că certificatul nu e de încredere
+(e autosemnat — normal pe rețea locală): apasă *Advanced → Continue*. Merge la
+fel pe telefon și pe laptop.
+
+Regenerezi certificatul oricând (ex. dacă s-a schimbat IP-ul Pi-ului):
+
+```bash
+./gen-cert.sh && sudo systemctl restart cloud-print
+```
 
 ## Note
 
