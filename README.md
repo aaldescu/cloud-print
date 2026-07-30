@@ -17,8 +17,13 @@ printa de pe telefon sau laptop — fără drivere, fără cabluri.
 - **Opțiuni complete** — copii, față-verso (margine lungă/scurtă), alb-negru/color,
   format hârtie, orientare, interval de pagini, calitate, încadrare în pagină
 - **Coadă de printare** — vezi joburile active și anulează-le cu un click
-- **Ușor pentru Pi Zero W** — doar Flask + comenzile CUPS; toată randarea grea
-  (previzualizarea PDF) se face în browserul clientului, nu pe Pi
+- **Fișiere salvate** — fiecare document încărcat rămâne salvat; îl deschizi și
+  reprintezi oricând, cu ce opțiuni vrei (vezi și de câte ori a fost printat)
+- **Istoric printări** — lista ultimelor printări, cu opțiunile folosite;
+  reprintezi identic cu un singur click
+- **Ușor pentru Pi Zero W** — doar Flask + comenzile CUPS + o mică bază SQLite
+  (din biblioteca standard Python); toată randarea grea (previzualizarea PDF)
+  se face în browserul clientului, nu pe Pi
 
 ## Instalare pe Raspberry Pi
 
@@ -76,11 +81,18 @@ telefon / laptop ──(WiFi)──▶ Flask (Pi)──▶ lp / lpstat (CUPS) �
             previzualizarea
 ```
 
-- `POST /api/upload` — salvează fișierul (nume aleator, curățat automat după 24h)
+- `POST /api/upload` — salvează fișierul și îl înregistrează în biblioteca SQLite
 - `GET /files/<id>` — servește fișierul pentru previzualizare
+- `GET /api/files`, `DELETE /api/files/<id>` — biblioteca de fișiere salvate
 - `POST /api/print` — construiește comanda `lp` cu opțiunile alese
   (`sides=two-sided-long-edge`, `print-color-mode=monochrome`, `page-ranges` etc.)
+  și înregistrează printarea în istoric
+- `GET /api/history`, `DELETE /api/history` — istoricul printărilor
 - `GET /api/printers`, `GET /api/jobs`, `POST /api/jobs/<id>/cancel` — stare și coadă
+
+Fișierele salvate și istoricul se păstrează într-o bază SQLite (`cloudprint.db`)
+și supraviețuiesc restartului. Fișierele nu se mai șterg automat — le ștergi
+manual din tab-ul **Fișiere**, ca să poți reprinta oricând documente mai vechi.
 
 ## Note
 

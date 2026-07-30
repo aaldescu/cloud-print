@@ -23,6 +23,21 @@
   </div>
 </header>
 
+<nav class="tabs" id="tabs" role="tablist">
+  <button class="tab active" data-view="print" role="tab">
+    <span class="tab-icon">🖨️</span> Printează
+  </button>
+  <button class="tab" data-view="files" role="tab">
+    <span class="tab-icon">📁</span> Fișiere
+    <span class="tab-badge" id="filesBadge" hidden>0</span>
+  </button>
+  <button class="tab" data-view="history" role="tab">
+    <span class="tab-icon">🕑</span> Istoric
+  </button>
+</nav>
+
+<!-- ============ Vizualizare: Printează ============ -->
+<div class="view" id="view-print">
 <main class="layout">
 
   <!-- ============ Previzualizare ============ -->
@@ -190,6 +205,44 @@
     </section>
   </aside>
 </main>
+</div><!-- /view-print -->
+
+<!-- ============ Vizualizare: Fișiere salvate ============ -->
+<div class="view" id="view-files" hidden>
+  <div class="board">
+    <div class="board-head">
+      <div>
+        <h2>Fișiere salvate</h2>
+        <p class="board-sub">Deschide un fișier ca să-l reprintezi cu ce opțiuni vrei.</p>
+      </div>
+      <span class="muted" id="filesCount"></span>
+    </div>
+    <ul class="file-grid" id="fileGrid"></ul>
+    <div class="empty-state" id="filesEmpty" hidden>
+      <span class="empty-icon">📁</span>
+      <p>Niciun fișier salvat încă.</p>
+      <button class="link-btn" data-goto="print">Încarcă primul fișier →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Vizualizare: Istoric ============ -->
+<div class="view" id="view-history" hidden>
+  <div class="board">
+    <div class="board-head">
+      <div>
+        <h2>Istoric printări</h2>
+        <p class="board-sub">Ultimele printări. Reprintezi identic cu un click.</p>
+      </div>
+      <button class="ghost-btn" id="clearHistory" hidden>Golește istoricul</button>
+    </div>
+    <ul class="history-list" id="historyList"></ul>
+    <div class="empty-state" id="historyEmpty" hidden>
+      <span class="empty-icon">🕑</span>
+      <p>Nicio printare încă.</p>
+    </div>
+  </div>
+</div>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
