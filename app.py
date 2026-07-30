@@ -384,15 +384,32 @@ def too_large(_):
     return jsonify({"error": f"Fișier prea mare. Limita este {MAX_UPLOAD_MB} MB."}), 413
 
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "8080"))
+def build_ssl_context():
+    """Încarcă certificatul HTTPS dacă există și e valid.
 
-    # HTTPS dacă există certificat (necesar pe unele telefoane care refuză
-    # http către IP-uri locale). Certificatul se generează cu ./gen-cert.sh
+    Dacă certificatul lipsește sau nu poate fi citit (ex. drepturi greșite
+    când a fost generat cu sudo), pornim pe http în loc să crăpăm de tot —
+    mai bine merge pe http decât să nu meargă deloc.
+    """
     cert = BASE_DIR / "certs" / "cert.pem"
     key = BASE_DIR / "certs" / "key.pem"
-    ssl_context = (str(cert), str(key)) if cert.exists() and key.exists() else None
+    if not (cert.exists() and key.exists()):
+        return None
+    try:
+        import ssl
 
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(cert), str(key))
+        return ctx
+    except Exception as exc:  # cert stricat / cheie necitibilă / drepturi
+        print(f"[CloudPrint] Nu pot folosi certificatul HTTPS ({exc}).")
+        print("[CloudPrint] Pornesc pe http. Rulează ./gen-cert.sh ca userul serviciului.")
+        return None
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8080"))
+    ssl_context = build_ssl_context()
     scheme = "https" if ssl_context else "http"
     print(f"CloudPrint pornește pe {scheme}://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, threaded=True, ssl_context=ssl_context)
