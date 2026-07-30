@@ -33,12 +33,18 @@ aplicația. La final îți afișează adresa, de exemplu `http://192.168.1.42:80
 
 ### Configurarea imprimantei în CUPS (o singură dată)
 
-```bash
-sudo cupsctl --remote-admin        # permite administrarea din rețea
+Scriptul de instalare activează deja administrarea din rețea. Deschide:
+
+```
+https://<ip-ul-pi>:631/admin
 ```
 
-Apoi deschide `http://<ip-ul-pi>:631` → **Administration → Add Printer** și
-adaugă imprimanta (USB sau de rețea). Utilizatorul/parola sunt cele de login pe Pi.
+**Atenție: cu `https`, nu `http`** — altfel CUPS afișează „Upgrade Required".
+Browserul va avertiza că certificatul nu e de încredere (e autosemnat, e normal
+pe rețeaua locală) — apasă *Advanced → Continue*. Apoi **Administration →
+Add Printer** și adaugă imprimanta (USB sau de rețea). Utilizatorul/parola sunt
+cele de login pe Pi (utilizatorul trebuie să fie în grupul `lpadmin` — scriptul
+îl adaugă; dă logout/login dacă tocmai ai rulat installul).
 
 Setează-o ca implicită:
 
