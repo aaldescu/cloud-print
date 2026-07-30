@@ -20,8 +20,9 @@ printa de pe telefon sau laptop — fără drivere, fără cabluri.
 - **Istoric printări** — ce s-a printat, când și cu ce opțiuni (nume, dată,
   imprimantă, copii, alb-negru/color etc.). Fișierele nu se salvează — doar
   jurnalul, ca să știi ce a trecut prin imprimantă
-- **Acces de pe telefon (HTTPS)** — pornește pe HTTPS cu certificat self-signed,
-  fiindcă unele telefoane refuză `http` către IP-uri locale
+- **Acces simplu de pe telefon** — rulează pe `http` (fără certificat, fără
+  avertismente, exact ca interfața routerului); `https` opțional pentru
+  telefoanele rare care refuză http
 - **Ușor pentru Pi Zero W** — doar Flask + comenzile CUPS + o mică bază SQLite
   (din biblioteca standard Python); toată randarea grea (previzualizarea PDF)
   se face în browserul clientului, nu pe Pi
@@ -94,22 +95,25 @@ Fișierele încărcate sunt **temporare** (șterse automat după câteva ore) �
 salvează pe Pi. Se păstrează doar **istoricul** (nume, dată, opțiuni) într-o bază
 SQLite (`cloudprint.db`), ca să știi ce s-a printat și când.
 
-### Acces de pe telefon (HTTPS)
+### Acces de pe telefon
 
-Unele telefoane (Chrome pe Android cu „Always use secure connections") refuză
-`http` către un IP local. De aceea aplicația poate rula pe HTTPS: `install.sh`
-generează automat un certificat self-signed în `certs/`. Dacă app-ul găsește
-`certs/cert.pem` + `certs/key.pem`, pornește pe **`https://<ip>:8080`**.
+Implicit aplicația rulează pe **`http://<ip>:8080`** — se deschide direct pe
+telefon și pe laptop, fără certificat și fără avertismente, exact ca interfața
+routerului. Pentru o rețea de casă e suficient.
 
-La prima accesare browserul avertizează că certificatul nu e de încredere
-(e autosemnat — normal pe rețea locală): apasă *Advanced → Continue*. Merge la
-fel pe telefon și pe laptop.
-
-Regenerezi certificatul oricând (ex. dacă s-a schimbat IP-ul Pi-ului):
+**HTTPS (opțional).** Doar dacă vreun telefon refuză `http` către IP-uri locale
+(ex. Chrome cu „Always use secure connections"), generezi un certificat
+self-signed și aplicația pornește automat pe https:
 
 ```bash
-./gen-cert.sh && sudo systemctl restart cloud-print
+./gen-cert.sh                       # FĂRĂ sudo, ca serviciul să poată citi cheia
+sudo systemctl restart cloud-print
 ```
+
+Dacă găsește `certs/cert.pem` + `certs/key.pem`, pornește pe `https://<ip>:8080`
+(prima dată browserul cere *Advanced → Continue*, certificatul fiind autosemnat).
+Ca să revii la http, șterge folderul `certs/` și repornește serviciul. Dacă
+certificatul devine necitibil, aplicația revine automat pe http în loc să crape.
 
 ## Note
 

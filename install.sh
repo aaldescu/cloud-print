@@ -10,12 +10,9 @@ if ! id "$APP_USER" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> Instalare pachete (CUPS + Flask + OpenSSL)…"
+echo "==> Instalare pachete (CUPS + Flask)…"
 sudo apt-get update
-sudo apt-get install -y cups python3-flask openssl
-
-echo "==> Generez certificat HTTPS (pentru acces de pe telefon)…"
-bash "$APP_DIR/gen-cert.sh"
+sudo apt-get install -y cups python3-flask
 
 echo "==> Adaug utilizatorul '$APP_USER' în grupul lpadmin…"
 sudo usermod -aG lpadmin "$APP_USER"
@@ -32,12 +29,15 @@ sudo systemctl enable --now cloud-print
 
 IP="$(hostname -I | awk '{print $1}')"
 echo
-echo "Gata! CloudPrint rulează la:  https://$IP:8080"
-echo "  (cu httpS — la prima accesare browserul avertizează despre certificat;"
-echo "   apasă 'Advanced' -> 'Continue'. Merge la fel pe telefon și pe laptop.)"
+echo "Gata! CloudPrint rulează la:  http://$IP:8080"
+echo "  (http simplu — se deschide direct pe telefon și pe laptop, fără avertismente,"
+echo "   exact ca interfața routerului.)"
+echo
+echo "Opțional: dacă vreun telefon refuză http și cere https, rulează ./gen-cert.sh"
+echo "  (fără sudo) și repornește serviciul — aplicația va porni automat pe https."
 echo
 echo "Dacă imprimanta nu e configurată încă, adaug-o din interfața CUPS:"
-echo "  deschide  https://$IP:631/admin  (cu httpS!)"
+echo "  deschide  https://$IP:631/admin  (CUPS cere httpS pe pagina de admin!)"
 echo "  browserul va avertiza despre certificat — apasă 'Advanced' -> 'Continue'"
 echo "  apoi Administration -> Add Printer (user/parola de login pe Pi)"
 echo
