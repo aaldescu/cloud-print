@@ -298,6 +298,14 @@ python3 -c "import secrets; print(secrets.token_hex(24))"
 > (`CLOUDPRINT_PASSWORD`). Fără token (`CLOUDPRINT_AGENT_TOKEN`), endpoint-urile
 > pentru agent refuză orice cerere.
 
+> **HTTPS în spatele proxy-ului:** în modul cloud aplicația știe automat că
+> rulează în spatele unui reverse proxy care termină HTTPS-ul — citește
+> anteturile `X-Forwarded-*` (schema reală, IP-ul clientului) și marchează
+> cookie-ul de login ca `Secure` (circulă doar pe HTTPS). Nu trebuie să faci
+> nimic. Dacă vreodată rulezi cloud-ul **fără** HTTPS în față, dezactivează cu
+> `CLOUDPRINT_BEHIND_PROXY=0` (altfel cookie-ul `Secure` blochează login-ul pe
+> http).
+
 ### Pasul 3 — pornește agentul pe Pi
 
 Pe Pi (unde ai deja CUPS + imprimanta configurată, vezi secțiunile de sus),

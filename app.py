@@ -51,6 +51,7 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # local | cloud | agent — vezi docstring-ul de sus
 MODE = os.environ.get("CLOUDPRINT_MODE", "local").strip().lower()
@@ -114,6 +115,28 @@ def _load_secret_key():
 
 app.secret_key = _load_secret_key()
 app.permanent_session_lifetime = timedelta(days=30)
+
+
+def _flag(name, default):
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+# În cloud aplicația stă în spatele unui reverse proxy (Traefik/Dokploy) care
+# termină HTTPS-ul. Trebuie să știe asta ca să vadă schema reală (https) și IP-ul
+# clientului din anteturile X-Forwarded-*, și să marcheze cookie-ul de sesiune ca
+# securizat. Implicit pornit în cloud; se poate forța cu CLOUDPRINT_BEHIND_PROXY.
+BEHIND_PROXY = _flag("CLOUDPRINT_BEHIND_PROXY", "1" if MODE == "cloud" else "0")
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,   # JS din pagină nu poate citi cookie-ul
+    SESSION_COOKIE_SAMESITE="Lax",  # protecție de bază împotriva CSRF
+    SESSION_COOKIE_SECURE=BEHIND_PROXY,  # cookie-ul circulă doar pe HTTPS
+)
+
+if BEHIND_PROXY:
+    app.config["PREFERRED_URL_SCHEME"] = "https"
+    # un singur hop de proxy (Traefik-ul Dokploy) — citește X-Forwarded-*
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 
 @app.before_request
