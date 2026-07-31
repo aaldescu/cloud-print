@@ -1,4 +1,4 @@
-# CloudPrint — serverul (modul cloud), pentru rulare cu Docker Compose pe un VPS.
+# CloudPrint — serverul (modul cloud), pentru rulare cu Docker Compose.
 # NU printează (nu are CUPS) — servește interfața web + coada de joburi.
 # Printarea o face agentul de pe Raspberry Pi (vezi install-agent.sh).
 #
@@ -6,27 +6,32 @@
 #   1. cp .env.example .env  și completează parola + tokenul
 #   2. docker compose up -d --build
 #
-# TLS: dacă rulezi în spatele unui reverse proxy (Traefik, Caddy, Nginx,
-# Cloudflare Tunnel), lasă-l pe acela să facă HTTPS-ul și să trimită spre
-# portul 8080 de mai jos. Dokploy îți gestionează domeniul + certificatul
-# automat, deci acolo nu e nevoie de acest fișier.
+# RUTARE / HTTPS:
+#   - Pe DOKPLOY: NU publica portul pe gazdă (ar intra în conflict cu proxy-ul
+#     Dokploy — „port is already allocated"). Lasă serviciul doar cu `expose`
+#     și adaugă domeniul din UI: tab-ul Domains → Service `cloudprint`,
+#     Container Port `8080`, HTTPS On. Traefik-ul Dokploy rutează prin rețea.
+#   - Pe un VPS FĂRĂ Dokploy: pune un reverse proxy cu HTTPS (Traefik/Caddy/
+#     Nginx/Cloudflare Tunnel) în față și decomentează blocul `ports` de mai jos
+#     ca să expui containerul (implicit pe 8080; schimbă cu CLOUDPRINT_HOST_PORT).
 
 services:
   cloudprint:
     build: .
     image: cloud-print:latest
-    container_name: cloud-print
     restart: unless-stopped
     environment:
       CLOUDPRINT_MODE: cloud
       CLOUDPRINT_DATA_DIR: /data
       # obligatorii — se citesc din fișierul .env (vezi .env.example)
-      CLOUDPRINT_PASSWORD: ${CLOUDPRINT_PASSWORD:?setează CLOUDPRINT_PASSWORD în .env}
-      CLOUDPRINT_AGENT_TOKEN: ${CLOUDPRINT_AGENT_TOKEN:?setează CLOUDPRINT_AGENT_TOKEN în .env}
-    ports:
-      # expune serverul pe portul 8080 al gazdei; pune un reverse proxy cu
-      # HTTPS în față înainte să-l deschizi public
-      - "8080:8080"
+      CLOUDPRINT_PASSWORD: ${CLOUDPRINT_PASSWORD:?seteaza CLOUDPRINT_PASSWORD in .env}
+      CLOUDPRINT_AGENT_TOKEN: ${CLOUDPRINT_AGENT_TOKEN:?seteaza CLOUDPRINT_AGENT_TOKEN in .env}
+    # portul intern al aplicației, vizibil pentru reverse proxy pe rețeaua Docker
+    expose:
+      - "8080"
+    # Doar pentru VPS fără Dokploy — publică portul pe gazdă (decomentează):
+    # ports:
+    #   - "${CLOUDPRINT_HOST_PORT:-8080}:8080"
     volumes:
       # date persistente: baza SQLite, fișierele temporare, cheia de sesiune
       - cloudprint-data:/data
