@@ -301,9 +301,25 @@ python3 -c "import secrets; print(secrets.token_hex(24))"
 ### Pasul 3 — pornește agentul pe Pi
 
 Pe Pi (unde ai deja CUPS + imprimanta configurată, vezi secțiunile de sus),
-pune configul agentului și instalează serviciul lui:
+rulează scriptul de instalare al agentului:
 
 ```bash
+cd cloud-print
+./install-agent.sh
+```
+
+Scriptul instalează pachetele (CUPS + Flask + `requests`), te întreabă **adresa
+serverului cloud** și **tokenul** (le scrie în `/etc/cloud-print-agent.env` cu
+drepturi `600`), apoi instalează și pornește serviciul systemd
+`cloud-print-agent` (pornește automat la fiecare boot). La final îți arată cum să
+verifici logul.
+
+<details>
+<summary>Sau manual, pas cu pas</summary>
+
+```bash
+sudo apt-get install -y cups python3-flask python3-requests
+
 sudo tee /etc/cloud-print-agent.env >/dev/null <<'EOF'
 CLOUDPRINT_CLOUD_URL=https://print.domeniul-tau.com
 CLOUDPRINT_AGENT_TOKEN=pune-aici-acelasi-token
@@ -320,11 +336,7 @@ sudo systemctl enable --now cloud-print-agent
 journalctl -u cloud-print-agent -n 20 --no-pager   # ar trebui să scrie "conectat la ..."
 ```
 
-Agentul are nevoie de biblioteca `requests`:
-
-```bash
-pip install -r requirements.txt        # sau: sudo apt-get install -y python3-requests
-```
+</details>
 
 > Poți rula pe același Pi **și** modul `local` (LAN) **și** agentul în paralel —
 > sunt servicii separate (`cloud-print` și `cloud-print-agent`). Sau doar agentul,
