@@ -1,0 +1,22 @@
+[Unit]
+Description=CloudPrint agent - trage joburi din cloud și printează local
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/cloud-print
+Environment=CLOUDPRINT_MODE=agent
+# obligatoriu: adresa serverului cloud și tokenul agentului.
+# Pune-le într-un fișier de mediu ca să nu stea în clar aici:
+#   CLOUDPRINT_CLOUD_URL=https://print.exemplu.ro
+#   CLOUDPRINT_AGENT_TOKEN=un-token-lung-si-secret
+#   CLOUDPRINT_POLL_INTERVAL=4
+EnvironmentFile=/etc/cloud-print-agent.env
+ExecStart=/usr/bin/python3 /home/pi/cloud-print/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

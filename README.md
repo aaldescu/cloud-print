@@ -13,6 +13,7 @@ imprimanta se face prin **CUPS**.
 - [Configurarea imprimantei în CUPS](#configurarea-imprimantei-în-cups)
 - [Acces de pe telefon](#acces-de-pe-telefon)
 - [Acces din afara casei (public, cu login)](#acces-din-afara-casei-public-cu-login)
+- [Varianta cloud + agent (Dokploy, fără tunel)](#varianta-cloud--agent-dokploy-fără-tunel)
 - [Gestionarea serviciului](#gestionarea-serviciului)
 - [Actualizare](#actualizare)
 - [Depanare](#depanare)
@@ -234,6 +235,105 @@ Gata — deschizi `https://print.domeniul-tau.com` de oriunde și te loghezi.
 > --url http://localhost:8080` care dă un URL temporar aleator (nu-l folosi
 > permanent — tot activează login-ul întâi).
 
+## Varianta cloud + agent (Dokploy, fără tunel)
+
+Dacă ai deja un **server public** (un VPS cu **Dokploy** sau orice host Docker),
+poți printa de oriunde **fără niciun tunel** și **fără să expui Pi-ul deloc**.
+
+Ideea: aplicația web rulează în **cloud** (Dokploy îi dă domeniu + HTTPS), iar
+Pi-ul rulează un **agent** care doar *iese* pe internet — întreabă periodic
+serverul dacă are joburi, le trage, le printează local și raportează înapoi.
+Routerul de acasă rămâne complet închis; agentul face doar cereri HTTPS spre
+exterior, ca un browser.
+
+```
+telefon ──▶ App cloud (Dokploy: interfață + login + coadă)
+                 ▲   │
+         raportează  │ trage joburi + fișier   (doar HTTPS spre exterior)
+         imprimante  ▼
+                 Pi (agent) ──▶ lp ──▶ CUPS ──▶ imprimantă
+```
+
+Diferența față de [tunelul Cloudflare](#pasul-2--expune-o-cu-cloudflare-tunnel):
+acolo se expune Pi-ul (aplicația stă tot pe Pi); aici aplicația e în cloud și
+Pi-ul doar *trage* joburile. Alege una dintre cele două, nu ambele.
+
+Aceeași aplicație (`app.py`) rulează în ambele roluri, comandată de variabila
+`CLOUDPRINT_MODE`:
+
+| Mod                  | Unde rulează | Ce face                                         |
+| -------------------- | ------------ | ----------------------------------------------- |
+| `local` (implicit)   | Pi           | tot pe Pi, în LAN — comportamentul clasic       |
+| `cloud`              | VPS/Dokploy  | interfața web + coada de joburi (fără CUPS)      |
+| `agent`              | Pi           | trage joburi din cloud și printează cu `lp`      |
+
+### Pasul 1 — pregătește un secret comun
+
+Generează un **token** cu care agentul se autentifică la server (aceeași valoare
+în ambele locuri):
+
+```bash
+python3 -c "import secrets; print(secrets.token_hex(24))"
+```
+
+### Pasul 2 — deployează serverul pe Dokploy
+
+În Dokploy creează o aplicație nouă din acest repo, tip **Docker** (folosește
+`Dockerfile`-ul inclus — pornește automat în modul `cloud` cu Gunicorn pe portul
+`8080`). Setează:
+
+- **Variabile de mediu:**
+  ```
+  CLOUDPRINT_MODE=cloud
+  CLOUDPRINT_PASSWORD=o-parola-lunga-si-secreta      # login obligatoriu — e public!
+  CLOUDPRINT_AGENT_TOKEN=<tokenul de la pasul 1>
+  CLOUDPRINT_DATA_DIR=/data
+  ```
+- **Volum persistent:** montează un volum la **`/data`** (acolo stau baza SQLite,
+  fișierele temporare și cheia de sesiune — altfel se pierd la fiecare redeploy).
+- **Domeniu:** adaugă un domeniu (ex. `print.domeniul-tau.com`) cu **HTTPS** activ
+  — Traefik-ul din Dokploy se ocupă de certificat. Portul containerului este `8080`.
+
+> ⚠️ În modul cloud aplicația e publică → **login-ul e obligatoriu**
+> (`CLOUDPRINT_PASSWORD`). Fără token (`CLOUDPRINT_AGENT_TOKEN`), endpoint-urile
+> pentru agent refuză orice cerere.
+
+### Pasul 3 — pornește agentul pe Pi
+
+Pe Pi (unde ai deja CUPS + imprimanta configurată, vezi secțiunile de sus),
+pune configul agentului și instalează serviciul lui:
+
+```bash
+sudo tee /etc/cloud-print-agent.env >/dev/null <<'EOF'
+CLOUDPRINT_CLOUD_URL=https://print.domeniul-tau.com
+CLOUDPRINT_AGENT_TOKEN=pune-aici-acelasi-token
+CLOUDPRINT_POLL_INTERVAL=4
+EOF
+sudo chmod 600 /etc/cloud-print-agent.env
+
+# instalează serviciul systemd al agentului (userul curent, calea curentă)
+APP_DIR="$(pwd)"; APP_USER="${SUDO_USER:-$(id -un)}"
+sed "s|/home/pi/cloud-print|$APP_DIR|g; s|User=pi|User=$APP_USER|g" \
+  cloud-print-agent.service | sudo tee /etc/systemd/system/cloud-print-agent.service >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable --now cloud-print-agent
+journalctl -u cloud-print-agent -n 20 --no-pager   # ar trebui să scrie "conectat la ..."
+```
+
+Agentul are nevoie de biblioteca `requests`:
+
+```bash
+pip install -r requirements.txt        # sau: sudo apt-get install -y python3-requests
+```
+
+> Poți rula pe același Pi **și** modul `local` (LAN) **și** agentul în paralel —
+> sunt servicii separate (`cloud-print` și `cloud-print-agent`). Sau doar agentul,
+> dacă vrei să printezi exclusiv prin cloud.
+
+Gata: deschizi `https://print.domeniul-tau.com` de oriunde, te loghezi, încarci
+un fișier și îl printezi — jobul așteaptă în coadă până îl trage agentul de pe Pi
+(câteva secunde) și ajunge la imprimantă.
+
 ## Gestionarea serviciului
 
 ```bash
@@ -323,6 +423,21 @@ Endpoint-uri:
 Fișierele încărcate sunt **temporare** (șterse automat) — nu se salvează pe Pi.
 Se păstrează doar **istoricul** (nume, dată, opțiuni) într-o bază SQLite
 (`cloudprint.db`).
+
+### În modul cloud + agent
+
+Aceleași endpoint-uri de utilizator, dar `POST /api/print` nu mai rulează `lp` —
+pune jobul într-o **coadă** (tabelul `jobs`). Agentul de pe Pi vorbește cu
+serverul prin endpoint-uri separate, protejate cu token (`CLOUDPRINT_AGENT_TOKEN`):
+
+- `GET /agent/next` — agentul cere următorul job din coadă (+ ce trebuie anulat)
+- `GET /agent/file/<id>` — descarcă fișierul jobului
+- `POST /agent/jobs/<id>/status` — raportează rezultatul (ok/eroare + id-ul CUPS)
+- `POST /agent/report` — raportează imprimantele și coada CUPS locală
+
+Serverul cloud nu atinge niciodată CUPS; toată printarea o face agentul, local pe
+Pi. Baza SQLite fiind partajată, se rulează **o singură instanță** cloud (Gunicorn
+cu câțiva workers e ok) și, de regulă, **un agent** per server.
 
 ## Note
 

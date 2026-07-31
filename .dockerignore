@@ -1,0 +1,9 @@
+.git
+__pycache__/
+*.pyc
+uploads/
+cloudprint.db
+certs/
+secret_key
+.venv/
+venv/
