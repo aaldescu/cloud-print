@@ -6,14 +6,23 @@
 #   1. cp .env.example .env  și completează parola + tokenul
 #   2. docker compose up -d --build
 #
-# RUTARE / HTTPS:
-#   - Pe DOKPLOY: NU publica portul pe gazdă (ar intra în conflict cu proxy-ul
-#     Dokploy — „port is already allocated"). Lasă serviciul doar cu `expose`
-#     și adaugă domeniul din UI: tab-ul Domains → Service `cloudprint`,
-#     Container Port `8080`, HTTPS On. Traefik-ul Dokploy rutează prin rețea.
-#   - Pe un VPS FĂRĂ Dokploy: pune un reverse proxy cu HTTPS (Traefik/Caddy/
-#     Nginx/Cloudflare Tunnel) în față și decomentează blocul `ports` de mai jos
-#     ca să expui containerul (implicit pe 8080; schimbă cu CLOUDPRINT_HOST_PORT).
+# ─────────────────────────────────────────────────────────────────────────────
+# RUTARE / HTTPS
+#
+# Pe DOKPLOY nu publici portul pe gazdă (ar intra în conflict cu proxy-ul —
+# „port is already allocated"). În schimb, containerul trebuie să fie pe rețeaua
+# `dokploy-network` (acolo e Traefik-ul Dokploy), iar rutarea o faci într-un fel:
+#
+#   Varianta A (recomandată): adaugi domeniul din UI-ul Dokploy → tab Domains,
+#     Service `cloudprint`, Container Port 8080, HTTPS On. Dokploy pune singur
+#     etichetele Traefik. (Blocul `labels` de mai jos rămâne comentat.)
+#
+#   Varianta B: definești rutarea aici — pui CLOUDPRINT_DOMAIN în .env,
+#     decomentezi blocul `labels` și NU mai adaugi domeniu în UI.
+#
+# Pe un VPS FĂRĂ Dokploy: șterge secțiunea `networks` (și `dokploy-network`),
+# decomentează blocul `ports`, și pune un reverse proxy cu HTTPS în față.
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
   cloudprint:
@@ -26,15 +35,32 @@ services:
       # obligatorii — se citesc din fișierul .env (vezi .env.example)
       CLOUDPRINT_PASSWORD: ${CLOUDPRINT_PASSWORD:?seteaza CLOUDPRINT_PASSWORD in .env}
       CLOUDPRINT_AGENT_TOKEN: ${CLOUDPRINT_AGENT_TOKEN:?seteaza CLOUDPRINT_AGENT_TOKEN in .env}
-    # portul intern al aplicației, vizibil pentru reverse proxy pe rețeaua Docker
+    # portul intern al aplicației, vizibil pentru Traefik pe rețeaua Docker
     expose:
       - "8080"
-    # Doar pentru VPS fără Dokploy — publică portul pe gazdă (decomentează):
-    # ports:
-    #   - "${CLOUDPRINT_HOST_PORT:-8080}:8080"
+    networks:
+      - dokploy-network
     volumes:
       # date persistente: baza SQLite, fișierele temporare, cheia de sesiune
       - cloudprint-data:/data
+
+    # Varianta B — rutare Traefik definită aici (vezi nota de sus). Setează
+    # CLOUDPRINT_DOMAIN în .env și decomentează:
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.docker.network=dokploy-network
+    #   - traefik.http.routers.cloudprint.rule=Host(`${CLOUDPRINT_DOMAIN}`)
+    #   - traefik.http.routers.cloudprint.entrypoints=websecure
+    #   - traefik.http.routers.cloudprint.tls.certresolver=letsencrypt
+    #   - traefik.http.services.cloudprint.loadbalancer.server.port=8080
+
+    # Doar pentru VPS FĂRĂ Dokploy — publică portul pe gazdă (și scoate `networks`):
+    # ports:
+    #   - "${CLOUDPRINT_HOST_PORT:-8080}:8080"
+
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   cloudprint-data:
