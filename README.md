@@ -12,6 +12,7 @@ imprimanta se face prin **CUPS**.
 - [Instalare rapidă](#instalare-rapidă)
 - [Configurarea imprimantei în CUPS](#configurarea-imprimantei-în-cups)
 - [Acces de pe telefon](#acces-de-pe-telefon)
+- [Acces din afara casei (public, cu login)](#acces-din-afara-casei-public-cu-login)
 - [Gestionarea serviciului](#gestionarea-serviciului)
 - [Actualizare](#actualizare)
 - [Depanare](#depanare)
@@ -36,6 +37,8 @@ imprimanta se face prin **CUPS**.
   salvează — doar jurnalul, ca să știi ce a trecut prin imprimantă
 - **Acces simplu de pe telefon** — rulează pe `http` (fără certificat, fără
   avertismente, exact ca interfața routerului); `https` opțional
+- **Login opțional** — autentificare cu parolă, ca să poți expune aplicația
+  public (ex. prin Cloudflare Tunnel) în siguranță
 - **Ușor pentru Pi Zero W** — doar Flask + comenzile CUPS + o mică bază SQLite
   (din biblioteca standard Python); toată randarea grea (previzualizarea PDF)
   se face în browserul clientului, nu pe Pi
@@ -155,6 +158,82 @@ Dacă găsește `certs/cert.pem` + `certs/key.pem`, aplicația pornește pe
 Ca să revii la http, șterge folderul `certs/` și repornește serviciul. Dacă
 certificatul devine necitibil, aplicația revine automat pe http în loc să crape.
 
+## Acces din afara casei (public, cu login)
+
+Ca să poți printa **de oriunde** (sau să lași și pe alții), ai nevoie de două
+lucruri: **autentificare** (ca să nu poată oricine printa) și un **tunel** care
+expune aplicația public fără port forwarding.
+
+> ⚠️ **Nu expune niciodată aplicația public fără login.** Fără parolă, oricine
+> cu URL-ul poate printa, încărca fișiere și vedea istoricul.
+
+### Pasul 1 — activează login-ul
+
+Autentificarea e oprită implicit (mod LAN). O activezi setând o parolă printr-un
+fișier de mediu, citit automat de serviciu:
+
+```bash
+sudo tee /etc/cloud-print.env >/dev/null <<'EOF'
+CLOUDPRINT_PASSWORD=pune-aici-o-parola-lunga-si-secreta
+CLOUDPRINT_USER=admin
+EOF
+sudo chmod 600 /etc/cloud-print.env
+sudo systemctl restart cloud-print
+```
+
+De acum aplicația cere login. (Ștergi fișierul și repornești ca să revii la
+accesul liber pe LAN.) Sesiunea ține 30 de zile per dispozitiv; ai și buton de
+**ieșire** în dreapta sus.
+
+### Pasul 2 — expune-o cu Cloudflare Tunnel
+
+Pi-ul deschide o conexiune **spre exterior** către Cloudflare, deci **nu** trebuie
+să deschizi porturi în router. Primești un URL public cu HTTPS. Ai nevoie de un
+domeniu adăugat în Cloudflare (planul gratuit e suficient).
+
+```bash
+# instalează cloudflared (Raspberry Pi OS)
+sudo mkdir -p /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | \
+  sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | \
+  sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt-get update && sudo apt-get install -y cloudflared
+
+# leagă-l de contul tău Cloudflare (deschide un link de autorizare)
+cloudflared tunnel login
+
+# creează tunelul și ruta DNS
+cloudflared tunnel create cloudprint
+cloudflared tunnel route dns cloudprint print.domeniul-tau.com
+```
+
+Creează `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: cloudprint
+credentials-file: /home/<user>/.cloudflared/<UUID-ul-tunelului>.json
+ingress:
+  - hostname: print.domeniul-tau.com
+    service: http://localhost:8080
+  - service: http_status:404
+```
+
+Apoi pornește-l ca serviciu:
+
+```bash
+sudo cloudflared service install
+sudo systemctl enable --now cloudflared
+```
+
+Gata — deschizi `https://print.domeniul-tau.com` de oriunde și te loghezi.
+
+> **Un plus de siguranță:** poți pune și **Cloudflare Access** în fața tunelului
+> (login cu email/Google, gratis) — atunci ai două straturi: Cloudflare + login-ul
+> aplicației. Pentru un test rapid, fără domeniu, există și `cloudflared tunnel
+> --url http://localhost:8080` care dă un URL temporar aleator (nu-l folosi
+> permanent — tot activează login-ul întâi).
+
 ## Gestionarea serviciului
 
 ```bash
@@ -247,7 +326,8 @@ Se păstrează doar **istoricul** (nume, dată, opțiuni) într-o bază SQLite
 
 ## Note
 
-- Aplicația este gândită pentru **rețeaua locală** — nu o expune direct pe
-  internet (nu are autentificare).
+- Implicit aplicația e gândită pentru **rețeaua locală** și rulează fără login.
+  Dacă o expui public, **activează întâi autentificarea** (vezi
+  [Acces din afara casei](#acces-din-afara-casei-public-cu-login)).
 - Pentru documente Word/LibreOffice, salvează-le ca **PDF** înainte de încărcare
   (conversia pe un Pi Zero W ar fi prea lentă).

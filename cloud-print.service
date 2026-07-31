@@ -8,6 +8,8 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/cloud-print
 Environment=PORT=8080
+# fișier opțional pentru secrete (ex. CLOUDPRINT_PASSWORD=...); '-' = nu e obligatoriu
+EnvironmentFile=-/etc/cloud-print.env
 ExecStart=/usr/bin/python3 /home/pi/cloud-print/app.py
 Restart=on-failure
 RestartSec=5

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CloudPrint · Autentificare</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="login-wrap">
+  <form class="login-card" method="post" action="{{ url_for('login') }}">
+    <div class="login-brand">
+      <span class="brand-icon">🖨️</span>
+      <div>
+        <h1>CloudPrint</h1>
+        <p class="brand-sub">Imprimare pe rețeaua locală</p>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="login-error">{{ error }}</div>
+    {% endif %}
+
+    <div class="field">
+      <label for="user">Utilizator</label>
+      <input id="user" name="user" type="text" autocomplete="username"
+             value="admin" autocapitalize="none" autocorrect="off">
+    </div>
+
+    <div class="field">
+      <label for="password">Parolă</label>
+      <input id="password" name="password" type="password"
+             autocomplete="current-password" autofocus required>
+    </div>
+
+    <button class="print-btn" type="submit">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+        <path d="M10 17l5-5-5-5M15 12H3"/>
+      </svg>
+      Intră
+    </button>
+  </form>
+</div>
+</body>
+</html>

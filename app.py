@@ -9,15 +9,20 @@ Aplicație Flask minimală, gândită pentru hardware modest (Pi Zero W):
   știi ce s-a printat și când
 - poate rula pe HTTPS (certificat self-signed) — necesar pentru unele
   telefoane care refuză http către IP-uri locale
+- autentificare opțională (login) pentru expunere publică — se activează
+  setând variabila de mediu CLOUDPRINT_PASSWORD
 """
 
+import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import subprocess
 import time
 import uuid
+from datetime import timedelta
 from pathlib import Path
 
 from flask import (
@@ -25,9 +30,12 @@ from flask import (
     abort,
     g,
     jsonify,
+    redirect,
     render_template,
     request,
     send_from_directory,
+    session,
+    url_for,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,6 +57,78 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 # nume/tip original per fișier temporar (doar în memorie — fișierele oricum
 # sunt efemere, deci nu are rost să persistăm și conținutul lor)
 _uploads = {}
+
+
+# ------------------------------------------------------------------ autentificare
+
+# Autentificarea e OPȚIONALĂ: dacă setezi CLOUDPRINT_PASSWORD, aplicația cere
+# login. Fără ea, merge liber (potrivit pentru rețeaua locală). OBLIGATORIU de
+# setat înainte de a expune aplicația public (ex. prin Cloudflare Tunnel).
+AUTH_PASSWORD = os.environ.get("CLOUDPRINT_PASSWORD")
+AUTH_USER = os.environ.get("CLOUDPRINT_USER", "admin")
+
+
+def _load_secret_key():
+    """Cheie pentru semnarea cookie-urilor de sesiune, stabilă între restarturi."""
+    env = os.environ.get("CLOUDPRINT_SECRET")
+    if env:
+        return env
+    path = BASE_DIR / "secret_key"
+    try:
+        if path.exists():
+            return path.read_text().strip()
+        key = secrets.token_hex(32)
+        path.write_text(key)
+        path.chmod(0o600)
+        return key
+    except OSError:
+        # nu putem scrie pe disc — cheie doar în memorie (sesiunile nu
+        # supraviețuiesc restartului, dar aplicația funcționează)
+        return secrets.token_hex(32)
+
+
+app.secret_key = _load_secret_key()
+app.permanent_session_lifetime = timedelta(days=30)
+
+
+@app.before_request
+def require_login():
+    if not AUTH_PASSWORD:
+        return  # autentificare dezactivată (mod LAN)
+    if session.get("auth"):
+        return
+    if request.endpoint in {"login", "static"}:
+        return
+    if request.path.startswith("/api/") or request.path.startswith("/files/"):
+        return jsonify({"error": "Neautentificat."}), 401
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not AUTH_PASSWORD:
+        return redirect(url_for("index"))
+    error = None
+    if request.method == "POST":
+        user = request.form.get("user", "")
+        pw = request.form.get("password", "")
+        # comparație în timp constant, ca să nu se poată ghici prin timing
+        ok = hmac.compare_digest(user, AUTH_USER) and hmac.compare_digest(
+            pw, AUTH_PASSWORD
+        )
+        if ok:
+            session["auth"] = True
+            session.permanent = True
+            return redirect(url_for("index"))
+        time.sleep(1)  # încetinește încercările repetate
+        error = "Utilizator sau parolă greșite."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ------------------------------------------------------------------ bază de date
@@ -124,7 +204,7 @@ def cleanup_old_uploads():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", auth_enabled=bool(AUTH_PASSWORD))
 
 
 # ------------------------------------------------------------------ imprimante
