@@ -4,5 +4,6 @@ uploads/
 cloudprint.db
 certs/
 secret_key
+.env
 .venv/
 venv/

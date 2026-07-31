@@ -1,0 +1,35 @@
+# CloudPrint — serverul (modul cloud), pentru rulare cu Docker Compose pe un VPS.
+# NU printează (nu are CUPS) — servește interfața web + coada de joburi.
+# Printarea o face agentul de pe Raspberry Pi (vezi install-agent.sh).
+#
+# Pornire:
+#   1. cp .env.example .env  și completează parola + tokenul
+#   2. docker compose up -d --build
+#
+# TLS: dacă rulezi în spatele unui reverse proxy (Traefik, Caddy, Nginx,
+# Cloudflare Tunnel), lasă-l pe acela să facă HTTPS-ul și să trimită spre
+# portul 8080 de mai jos. Dokploy îți gestionează domeniul + certificatul
+# automat, deci acolo nu e nevoie de acest fișier.
+
+services:
+  cloudprint:
+    build: .
+    image: cloud-print:latest
+    container_name: cloud-print
+    restart: unless-stopped
+    environment:
+      CLOUDPRINT_MODE: cloud
+      CLOUDPRINT_DATA_DIR: /data
+      # obligatorii — se citesc din fișierul .env (vezi .env.example)
+      CLOUDPRINT_PASSWORD: ${CLOUDPRINT_PASSWORD:?setează CLOUDPRINT_PASSWORD în .env}
+      CLOUDPRINT_AGENT_TOKEN: ${CLOUDPRINT_AGENT_TOKEN:?setează CLOUDPRINT_AGENT_TOKEN în .env}
+    ports:
+      # expune serverul pe portul 8080 al gazdei; pune un reverse proxy cu
+      # HTTPS în față înainte să-l deschizi public
+      - "8080:8080"
+    volumes:
+      # date persistente: baza SQLite, fișierele temporare, cheia de sesiune
+      - cloudprint-data:/data
+
+volumes:
+  cloudprint-data:
