@@ -9,6 +9,7 @@ imprimanta se face prin **CUPS**.
 
 - [Funcționalități](#funcționalități)
 - [De ce ai nevoie](#de-ce-ai-nevoie)
+- [Hardware compatibil](#hardware-compatibil)
 - [Instalare rapidă](#instalare-rapidă)
 - [Configurarea imprimantei în CUPS](#configurarea-imprimantei-în-cups)
 - [Acces de pe telefon](#acces-de-pe-telefon)
@@ -54,6 +55,44 @@ imprimanta se face prin **CUPS**.
 > **Notă despre utilizator:** imaginile noi de Raspberry Pi OS nu mai au userul
 > implicit `pi`. Scriptul de instalare folosește automat utilizatorul cu care îl
 > rulezi — nu trebuie să faci nimic special.
+
+## Hardware compatibil
+
+CloudPrint nu depinde de Raspberry Pi — e doar **Python 3 + CUPS**. Merge pe
+**orice dispozitiv cu Linux** care poate rula Python și are acces la imprimantă
+(USB sau rețea). Funcționează la fel pe **ARM** și pe **x86/x64**.
+
+Cerințe minime:
+
+- **Linux** — ideal o distribuție bazată pe Debian/Ubuntu (Raspberry Pi OS,
+  Debian, Ubuntu, Armbian, DietPi), fiindcă `install.sh` folosește `apt`. Pe alte
+  distribuții (Fedora, Arch, Alpine) merge la fel, doar instalezi manual `cups`
+  și `python3` cu managerul lor de pachete.
+- **Python 3.9+** și **CUPS**
+- **RAM puțin** — aplicația e ușoară; merge chiar și pe ~256–512 MB (Pi Zero W).
+  Randarea grea (previzualizarea PDF) se face în browserul clientului, nu pe placă.
+- **Acces la imprimantă** — port USB sau rețea (WiFi/Ethernet)
+
+### Plăci / SBC-uri (ARM)
+
+- **Raspberry Pi** — toată gama: Zero W, Zero 2 W, 3, 4, 5, 400
+- **Orange Pi** (Zero/PC/5 etc.), **Banana Pi**
+- **Radxa / Rock Pi**, **Odroid** (C4, N2+), **NanoPi** (FriendlyElec)
+- **Libre Computer** (Le Potato), **Pine64**, **BeagleBone**
+
+### Mini-PC-uri / x86
+
+- Orice **mini-PC** (Intel NUC, Beelink, Minisforum, GMKtec etc.)
+- **Thin client**-uri refolosite (HP t620/t630, Dell Wyse) — silențioase și ieftine
+- Un **laptop vechi** sau desktop cu Debian/Ubuntu instalat
+
+> Pentru modul **agent** (cloud + agent) cerințele sunt și mai mici — agentul doar
+> iese pe internet și rulează `lp`, deci merge pe cea mai modestă placă. Serverul
+> **cloud** rulează separat, în Docker, pe orice VPS (vezi
+> [Varianta cloud + agent](#varianta-cloud--agent-dokploy-fără-tunel)).
+>
+> **Windows/macOS?** Serverul cloud (Docker) da; partea care printează (`local` /
+> `agent`) e gândită pentru Linux, fiindcă folosește CUPS și comenzile `lp`/`lpstat`.
 
 ## Instalare rapidă
 
